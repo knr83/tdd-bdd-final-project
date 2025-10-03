@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONWARNINGS: ignore
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup Chrome (for Selenium)
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Nose shim for Python 3.11
+        run: |
+          cat > sitecustomize.py << 'PY'
+          import collections
+          if not hasattr(collections, "Callable"):
+              collections.Callable = collections.abc.Callable
+          PY
+
+      - name: flake8
+        run: flake8 .
+
+      - name: pylint
+        run: pylint --rcfile=setup.cfg service
+
+      - name: nosetests with coverage
+        env:
+          DATABASE_URI: sqlite:///test.db
+        run: nosetests -vv --with-coverage --cover-package=service tests
+
+      - name: Start Flask app for BDD
+        env:
+          FLASK_APP: service:app
+          FLASK_ENV: testing
+          DATABASE_URI: sqlite:///dev.db
+        run: |
+          nohup python -m flask run --host=127.0.0.1 --port=8080 >/dev/null 2>&1 &
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:8080/health >/dev/null; then echo "Service is up"; break; fi
+            sleep 1
+          done
+
+      - name: behave (headless Chrome)
+        env:
+          BASE_URL: http://127.0.0.1:8080
+          DRIVER: chrome
+          WAIT_SECONDS: '60'
+        run: behave -k
+
+
