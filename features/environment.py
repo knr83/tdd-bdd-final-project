@@ -16,6 +16,8 @@ def before_all(context):
     # Select either Chrome or Firefox
     if 'firefox' in DRIVER:
         context.driver = get_firefox()
+    elif 'edge' in DRIVER:
+        context.driver = get_edge()
     else:
         context.driver = get_chrome()
     context.driver.implicitly_wait(context.wait_seconds)
@@ -42,5 +44,11 @@ def get_firefox():
     """Creates a headless Firefox driver"""
     options = webdriver.FirefoxOptions()
     options.add_argument("--headless")
-    return webdriver.Firefox(options=options)    
-    
+    return webdriver.Firefox(options=options)
+
+
+def get_edge():
+    """Creates a headless Edge driver"""
+    options = webdriver.EdgeOptions()
+    options.add_argument("--headless")
+    return webdriver.Edge(options=options)
