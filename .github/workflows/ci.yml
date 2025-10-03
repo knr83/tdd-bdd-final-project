@@ -37,11 +37,39 @@ jobs:
 
       - name: Nose shim for Python 3.11
         run: |
-          cat > sitecustomize.py << 'PY'
-          import collections
-          if not hasattr(collections, "Callable"):
-              collections.Callable = collections.abc.Callable
+          python - <<'PY'
+          import os, site, sys
+          content = (
+              "import collections\n"
+              "try:\n"
+              "    collections.Callable\n"
+              "except AttributeError:\n"
+              "    import collections.abc as _abc\n"
+              "    collections.Callable = _abc.Callable\n"
+          )
+          targets = set()
+          try:
+              targets.update(site.getsitepackages())
+          except Exception:
+              pass
+          try:
+              targets.add(site.getusersitepackages())
+          except Exception:
+              pass
+          # Always also drop a copy in the workspace root as a fallback
+          targets.add(os.getenv('GITHUB_WORKSPACE', os.getcwd()))
+          for t in list(targets):
+              try:
+                  os.makedirs(t, exist_ok=True)
+                  with open(os.path.join(t, 'sitecustomize.py'), 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print(f"wrote shim to: {t}")
+              except Exception as e:
+                  print(f"warn: {t}: {e}", file=sys.stderr)
           PY
+
+      - name: Ensure PYTHONPATH includes workspace
+        run: echo "PYTHONPATH=${PYTHONPATH}:${GITHUB_WORKSPACE}" >> $GITHUB_ENV
 
       - name: flake8
         run: flake8 .
